@@ -242,10 +242,10 @@ import { BANNED, ERRNO, K, r32, r16, w32, hexBytes, coreList }
 let PK = null, makePoopsEngine = null, buildLadder = null;
 
 async function loadPoopsModules() {
-    const lib = await import("./poops.js?v=14");
+    const lib = await import("./poops.js?v=15");
 
-    await import("./poops.js?v=14");
-    const st = await import("./poops.js?v=14");
+    await import("./poops.js?v=15");
+    const st = await import("./poops.js?v=15");
     PK = lib.PK;
     makePoopsEngine = lib.makePoopsEngine;
     buildLadder = st.buildLadder;

@@ -8297,14 +8297,24 @@ export function makePoopsEngine(X) {
 
     try {
       const name = o.elfName || "elfldr-ps5-1360.elf";
-      flushMark("STAGE5-HEAD-PRE", "url=../payloads/" + name);
-      const head = await fetch("../payloads/" + name, {
-        method: "HEAD",
+      flushMark("STAGE5-ELF-FETCH-PRE", "url=../payloads/" + name);
+      const response = await fetch("../payloads/" + name, {
         cache: "no-store",
       });
-      const declared = parseInt(head.headers.get("content-length") || "0", 10);
-      if (!(declared > 0)) throw new Error("no content-length for " + name);
-      flushMark("STAGE5-HEAD-OK", "declared=" + declared);
+      if (!response.ok)
+        throw new Error("elfldr fetch failed: HTTP " + response.status);
+      const elfBytes = new Uint8Array(await response.arrayBuffer());
+      const declared = elfBytes.length;
+      if (!(declared >= 4 && declared <= 0x1000000))
+        throw new Error("invalid elfldr size " + declared);
+      if (
+        elfBytes[0] !== 0x7f ||
+        elfBytes[1] !== 0x45 ||
+        elfBytes[2] !== 0x4c ||
+        elfBytes[3] !== 0x46
+      )
+        throw new Error("does not start with \x7fELF");
+      flushMark("STAGE5-ELF-FETCH-OK", "bytes=" + declared);
       const mapped = (declared + PK.PAGE - 1) & ~(PK.PAGE - 1);
       const er = await sys(
         PSYS.MMAP,
@@ -8328,43 +8338,19 @@ export function makePoopsEngine(X) {
         "STAGE5-ELF-MMAP",
         "addr=" + hx(elfBase) + "-size=0x" + mapped.toString(16),
       );
-      let head4 = null;
-      const g = await fetchInto("../payloads/" + name, (off, chunk) => {
-        if (head4 === null) head4 = chunk.slice(0, 4);
-        if (off + chunk.length > declared)
-          throw new Error("elfldr grew beyond its declared size");
-
-        const base = elfBase.add32(off);
-        let i = 0;
-        const n4 = chunk.length & ~3;
-        for (; i < n4; i += 4)
-          P.write4(
-            base.add32(i),
-            chunk[i] |
-              (chunk[i + 1] << 8) |
-              (chunk[i + 2] << 16) |
-              (chunk[i + 3] << 24),
-          );
-        for (; i < chunk.length; ++i) P.write1(base.add32(i), chunk[i]);
-      });
-      if (g.total !== declared)
-        throw new Error(
-          "size changed mid-fetch: declared " +
-            declared +
-            ", received " +
-            g.total,
+      let i = 0;
+      const n4 = elfBytes.length & ~3;
+      for (; i < n4; i += 4)
+        P.write4(
+          elfBase.add32(i),
+          elfBytes[i] |
+            (elfBytes[i + 1] << 8) |
+            (elfBytes[i + 2] << 16) |
+            (elfBytes[i + 3] << 24),
         );
-      if (
-        !(
-          head4 &&
-          head4[0] === 0x7f &&
-          head4[1] === 0x45 &&
-          head4[2] === 0x4c &&
-          head4[3] === 0x46
-        )
-      )
-        throw new Error("does not start with \x7fELF");
-      elfLen = g.total;
+      for (; i < elfBytes.length; ++i)
+        P.write1(elfBase.add32(i), elfBytes[i]);
+      elfLen = elfBytes.length;
       const back = P.read4(elfBase);
       out.steps.push(
         "elfldr @ " +
