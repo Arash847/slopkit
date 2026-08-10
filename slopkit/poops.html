@@ -237,15 +237,15 @@ otherwise.</div>
 import { installWindowP, pairStatus } from "./mem.js?v=10";
 import { int64 } from "./int64.js";
 import { BANNED, ERRNO, K, r32, r16, w32, hexBytes, coreList }
-    from "./poops.js?v=13";
+    from "./poops.js?v=16";
 
 let PK = null, makePoopsEngine = null, buildLadder = null;
 
 async function loadPoopsModules() {
-    const lib = await import("./poops.js?v=15");
+    const lib = await import("./poops.js?v=16");
 
-    await import("./poops.js?v=15");
-    const st = await import("./poops.js?v=15");
+    await import("./poops.js?v=16");
+    const st = await import("./poops.js?v=16");
     PK = lib.PK;
     makePoopsEngine = lib.makePoopsEngine;
     buildLadder = st.buildLadder;
@@ -474,6 +474,7 @@ const PAYLOAD_MAX_SIZE = 0x200000;
 let payloadSendStore = null;
 let payloadSockaddrStore = null;
 let payloadSocketOptionStore = null;
+let payloadSendTimeoutStore = null;
 let payloadSenderBlocked = "";
 
 function showPayloadMenu() {
@@ -536,6 +537,11 @@ function preparePayloadSender() {
         payloadSocketOptionStore.u8.fill(0);
         payloadSocketOptionStore.u8[0] = 1;
     }
+    if (payloadSendTimeoutStore === null) {
+        payloadSendTimeoutStore = mem(0x10);
+        payloadSendTimeoutStore.u8.fill(0);
+        payloadSendTimeoutStore.u8[0] = 15;
+    }
 }
 
 async function sendPayloadToElfldr(name) {
@@ -579,6 +585,11 @@ async function sendPayloadToElfldr(name) {
             payloadSocketOptionStore.ptr, 4);
         if (result.failed || result.s32 !== 0)
             throw payloadSyscallError("setsockopt SO_NOSIGPIPE", result);
+
+        result = await sys(SYS_SETSOCKOPT, fd, 0xffff, 0x1005,
+            payloadSendTimeoutStore.ptr, 0x10);
+        if (result.failed || result.s32 !== 0)
+            throw payloadSyscallError("setsockopt SO_SNDTIMEO", result);
 
         result = await sys(SYS_CONNECT, fd, payloadSockaddrStore.ptr, 0x10);
         if (result.failed || result.s32 !== 0)
